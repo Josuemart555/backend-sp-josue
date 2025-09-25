@@ -66,6 +66,14 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9D0F98135C754526860D532BF20FB73D }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_1C61BBADB26940B685782A3EE89EDFB9 }}
 
+      # Configurar App Settings para que Azure construya e inicie con Node 20
+      - name: Configure App Service app settings (Oryx build + Node version)
+        run: |
+          az webapp config appsettings set \
+            --name backend-sp-josue \
+            --resource-group "<TU_RESOURCE_GROUP>" \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true ENABLE_ORYX_BUILD=true WEBSITE_NODE_DEFAULT_VERSION="~20"
+
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
