@@ -17,41 +17,47 @@ async function createServer() {
     // Confía en el proxy de Azure para detectar correctamente req.protocol = 'https'
     app.set('trust proxy', true);
 
-    // Configurar CORS UNA sola vez con preflight
-    const allowedOrigins = (
-        process.env.CORS_ORIGIN
-            ? process.env.CORS_ORIGIN.split(',').map(s => s.trim()).filter(Boolean)
-            : [
-                process.env.FRONTEND_ORIGIN,
-                process.env.SWAGGER_ORIGIN,
-                'http://localhost:3000',
-                'http://localhost:4200',
-                'http://127.0.0.1:3000',
-            ].filter(Boolean)
-    );
+    // Construir whitelist desde env (opcional)
+    const envList = []
+        .concat(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : [])
+        .concat(process.env.FRONTEND_ORIGIN ? [process.env.FRONTEND_ORIGIN] : [])
+        .concat(process.env.SWAGGER_ORIGIN ? [process.env.SWAGGER_ORIGIN] : [])
+        .map(s => (s || '').trim())
+        .filter(Boolean);
+    const allowedOrigins = Array.from(new Set(envList)); // únicos
 
-    const corsOptions = {
-        origin: function (origin, callback) {
-            if (!origin) return callback(null, true); // curl/healthchecks
-            if (allowedOrigins.length === 0) return callback(null, true); // sin lista -> permitir todos
-            if (allowedOrigins.includes(origin)) return callback(null, true);
-            return callback(new Error('Origen no permitido por CORS: ' + origin));
-        },
-        credentials: true,
-        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-        exposedHeaders: ['Authorization', 'X-Auth-Token'],
-        maxAge: 86400,
+    // Delegado dinámico de CORS: permite same-origin y whitelist
+    const corsDelegate = (req, callback) => {
+        const requestOrigin = req.headers.origin; // ej: https://backend-...azurewebsites.net
+        const selfOrigin = `${req.protocol}://${req.get('host')}`;
+
+        let allow = false;
+        if (!requestOrigin) {
+            // curl/health checks, etc.
+            allow = true;
+        } else if (requestOrigin === selfOrigin) {
+            // SIEMPRE permitir same-origin (Swagger UI en el mismo backend)
+            allow = true;
+        } else if (allowedOrigins.length === 0) {
+            // Si no configuraste lista, permite todos (opcional: cámbialo a false si quieres restringir)
+            allow = true;
+        } else if (allowedOrigins.includes(requestOrigin)) {
+            allow = true;
+        }
+
+        const options = {
+            origin: allow,
+            credentials: true,
+            methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+            allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+            exposedHeaders: ['Authorization', 'X-Auth-Token'],
+            maxAge: 86400,
+        };
+        callback(null, options);
     };
 
-    app.use(cors(corsOptions));
-
-    app.use((req, res, next) => {
-        if (req.method === 'OPTIONS') {
-            return res.sendStatus(204);
-        }
-        next();
-    });
+    app.use(cors(corsDelegate));
+    app.options(/.*/, cors(corsDelegate));
 
     // Redirige a HTTPS en producción (opcional)
     if (process.env.NODE_ENV === 'production') {
