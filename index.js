@@ -1,4 +1,10 @@
-require('dotenv').config();
+try {
+    require('dotenv').config();
+} catch (e) {
+    // Si dotenv no está disponible, seguimos: Azure inyecta variables via App Settings
+    console.warn('dotenv no disponible, continuando con variables de entorno del sistema');
+}
+
 const { createServer } = require('./src/app');
 
 const PORT = process.env.PORT || 3000;

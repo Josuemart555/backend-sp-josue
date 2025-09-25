@@ -11,58 +11,49 @@ async function createServer() {
     const app = express();
 
     app.use(helmet());
-    app.use(cors({
-        origin: process.env.CORS_ORIGIN?.split(',') || '*',
-        credentials: true
-    }));
-    app.use(express.json());
     app.use(morgan('dev'));
+    app.use(express.json());
 
     // Confía en el proxy de Azure para detectar correctamente req.protocol = 'https'
     app.set('trust proxy', true);
 
-    const allowedOrigins = [
-        process.env.FRONTEND_ORIGIN,
-        process.env.SWAGGER_ORIGIN,
-        'http://localhost:3000',
-        'http://localhost:4200',
-        'http://127.0.0.1:3000',
-    ].filter(Boolean);
+    // Configurar CORS UNA sola vez con preflight
+    const allowedOrigins = (
+        process.env.CORS_ORIGIN
+            ? process.env.CORS_ORIGIN.split(',').map(s => s.trim()).filter(Boolean)
+            : [
+                process.env.FRONTEND_ORIGIN,
+                process.env.SWAGGER_ORIGIN,
+                'http://localhost:3000',
+                'http://localhost:4200',
+                'http://127.0.0.1:3000',
+            ].filter(Boolean)
+    );
 
-    app.use(cors({
+    const corsOptions = {
         origin: function (origin, callback) {
-            // Permitir solicitudes sin origin (p. ej., curl/healthchecks)
+            // Permitir solicitudes sin origin (curl, health checks)
             if (!origin) return callback(null, true);
+            if (allowedOrigins.length === 0) return callback(null, true); // sin lista -> permitir todos
             if (allowedOrigins.includes(origin)) return callback(null, true);
-            return callback(new Error('Origen no permitido por CORS: ' + origin), false);
+            return callback(new Error('Origen no permitido por CORS: ' + origin));
         },
-        credentials: true, // si usas cookies o auth basada en credenciales
-        // Si devuelves tokens en headers personalizados, exponlos:
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
         exposedHeaders: ['Authorization', 'X-Auth-Token'],
-    }));
+        maxAge: 86400, // cachear preflight
+    };
 
-    // Helmet (ajustes comunes; ajusta según tus necesidades)
-    app.use(helmet());
-    app.use(helmet.crossOriginResourcePolicy({ policy: 'cross-origin' })); // si sirves recursos entre dominios
+    app.use(cors(corsOptions));
+    app.options('*', cors(corsOptions)); // responder preflight
 
-    // Redirige a HTTPS en producción (opcional, si tu PaaS no lo hace por ti)
+    // Redirige a HTTPS en producción (opcional)
     if (process.env.NODE_ENV === 'production') {
         app.use((req, res, next) => {
             if (req.secure) return next();
-            // X-Forwarded-Proto es establecido por el proxy
             if (req.get('x-forwarded-proto') === 'https') return next();
             return res.redirect(`https://${req.get('host')}${req.originalUrl}`);
-        });
-    }
-
-    // Si usas cookies para sesión/JWT, al setear la cookie:
-    function setAuthCookie(res, token) {
-        res.cookie('token', token, {
-            httpOnly: true,
-            sameSite: 'none', // necesario para cross-site
-            secure: true,     // requiere HTTPS
-            path: '/',
-            // domain: '.tudominio.com', // si usas dominio propio
         });
     }
 
@@ -70,16 +61,9 @@ async function createServer() {
         BigInt.prototype.toJSON = function () { return this.toString(); };
     }
 
-    // Inyectar prisma en request (opcional)
-    // app.use((req, res, next) => {
-    //     req.db = prisma;
-    //     next();
-    // });
-
     // Swagger UI servirá el JSON dinámico desde /api/docs.json
     app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(null, { swaggerUrl: '/api/docs.json' }));
     app.get('/api/docs.json', (req, res) => {
-        // Construye "servers" según el host y protocolo actuales
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const spec = { ...swaggerSpec, servers: [{ url: baseUrl }] };
         res.json(spec);
@@ -96,6 +80,20 @@ async function createServer() {
     });
 
     app.use('/api/libros', libroRoutes);
+
+    // Manejador global de errores (JSON + log)
+    app.use((err, req, res, next) => {
+        console.error('[API ERROR]', {
+            method: req.method,
+            url: req.originalUrl,
+            message: err?.message,
+            stack: err?.stack,
+        });
+        const status = err.status || err.statusCode || 500;
+        res.status(status).json({
+            message: err?.message || 'Internal Server Error',
+        });
+    });
 
     return app;
 }
