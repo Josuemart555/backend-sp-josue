@@ -18,22 +18,15 @@ async function createServer() {
     app.set('trust proxy', true);
 
     // Configurar CORS UNA sola vez con preflight
-    const allowedOrigins = (
-        process.env.CORS_ORIGIN
-            ? process.env.CORS_ORIGIN.split(',').map(s => s.trim()).filter(Boolean)
-            : [
-                process.env.FRONTEND_ORIGIN,
-                process.env.SWAGGER_ORIGIN,
-                'http://localhost:3000',
-                'http://localhost:4200',
-                'http://127.0.0.1:3000',
-            ].filter(Boolean)
-    );
+    const allowedOrigins = [
+        process.env.FRONTEND_ORIGIN,
+        process.env.SWAGGER_ORIGIN,
+        process.env.CORS_ORIGIN && process.env.CORS_ORIGIN.split(',').map(s => s.trim())
+    ].flat().filter(Boolean);
 
     const corsOptions = {
         origin: function (origin, callback) {
-            // Permitir solicitudes sin origin (curl, health checks)
-            if (!origin) return callback(null, true);
+            if (!origin) return callback(null, true); // curl/healthchecks
             if (allowedOrigins.length === 0) return callback(null, true); // sin lista -> permitir todos
             if (allowedOrigins.includes(origin)) return callback(null, true);
             return callback(new Error('Origen no permitido por CORS: ' + origin));
@@ -42,11 +35,11 @@ async function createServer() {
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
         exposedHeaders: ['Authorization', 'X-Auth-Token'],
-        maxAge: 86400, // cachear preflight
+        maxAge: 86400,
     };
 
     app.use(cors(corsOptions));
-    app.options('*', cors(corsOptions)); // responder preflight
+    app.options('/api/*', cors(corsOptions));
 
     // Redirige a HTTPS en producción (opcional)
     if (process.env.NODE_ENV === 'production') {
@@ -90,9 +83,7 @@ async function createServer() {
             stack: err?.stack,
         });
         const status = err.status || err.statusCode || 500;
-        res.status(status).json({
-            message: err?.message || 'Internal Server Error',
-        });
+        res.status(status).json({ message: err?.message || 'Internal Server Error' });
     });
 
     return app;
