@@ -54,9 +54,15 @@ jobs:
         with:
           name: node-app-zip
 
+      - name: Inspect artifact (size + content hints)
+        run: |
+          ls -la
+          echo "ZIP size:"
+          du -sh release.zip || true
+
       # Pequeña espera opcional para evitar choque con reinicios del SCM
       - name: Wait a few seconds before deployment
-        run: sleep 8
+        run: sleep 20
 
       - name: Login to Azure
         uses: azure/login@v2
