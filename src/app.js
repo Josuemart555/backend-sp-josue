@@ -18,11 +18,17 @@ async function createServer() {
     app.set('trust proxy', true);
 
     // Configurar CORS UNA sola vez con preflight
-    const allowedOrigins = [
-        process.env.FRONTEND_ORIGIN,
-        process.env.SWAGGER_ORIGIN,
-        process.env.CORS_ORIGIN && process.env.CORS_ORIGIN.split(',').map(s => s.trim())
-    ].flat().filter(Boolean);
+    const allowedOrigins = (
+        process.env.CORS_ORIGIN
+            ? process.env.CORS_ORIGIN.split(',').map(s => s.trim()).filter(Boolean)
+            : [
+                process.env.FRONTEND_ORIGIN,
+                process.env.SWAGGER_ORIGIN,
+                'http://localhost:3000',
+                'http://localhost:4200',
+                'http://127.0.0.1:3000',
+            ].filter(Boolean)
+    );
 
     const corsOptions = {
         origin: function (origin, callback) {
@@ -39,7 +45,13 @@ async function createServer() {
     };
 
     app.use(cors(corsOptions));
-    app.options('/api/*', cors(corsOptions));
+
+    app.use((req, res, next) => {
+        if (req.method === 'OPTIONS') {
+            return res.sendStatus(204);
+        }
+        next();
+    });
 
     // Redirige a HTTPS en producción (opcional)
     if (process.env.NODE_ENV === 'production') {
