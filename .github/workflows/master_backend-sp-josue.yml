@@ -29,11 +29,11 @@ jobs:
           npm run build --if-present
           npm run test --if-present
 
-      # Empaquetar solo lo necesario para ejecución (excluir carpetas pesadas)
+      # Empaquetar incluyendo node_modules (evitamos Oryx/build en Azure)
       - name: Create deployment package (zip)
         run: |
           zip -r release.zip . \
-            -x "node_modules/*" ".git/*" ".github/*" ".idea/*" "tests/*" "*.log" "coverage/*"
+            -x ".git/*" ".github/*" ".idea/*" "tests/*" "*.log" "coverage/*"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -58,21 +58,12 @@ jobs:
       - name: Wait a few seconds before deployment
         run: sleep 10
 
-      
       - name: Login to Azure
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_E006E252C62644AD8F2F5747C9D0568C }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9D0F98135C754526860D532BF20FB73D }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_1C61BBADB26940B685782A3EE89EDFB9 }}
-
-      # Configurar App Settings para que Azure construya e inicie con Node 20
-      - name: Configure App Service app settings (Oryx build + Node version)
-        run: |
-          az webapp config appsettings set \
-            --name backend-sp-josue \
-            --resource-group "<TU_RESOURCE_GROUP>" \
-            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true ENABLE_ORYX_BUILD=true WEBSITE_NODE_DEFAULT_VERSION="~20"
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
