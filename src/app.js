@@ -4,7 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./docs/swagger');
-const libroRoutes = require('./routes/libros.routes');
+const carteleraRoutes = require('./routes/cartelera.routes');
 const { getPool } = require('./utils/mssql');
 
 async function createServer() {
@@ -90,7 +90,7 @@ async function createServer() {
         }
     });
 
-    app.use('/api/libros', libroRoutes);
+    app.use('/api/cartelera', carteleraRoutes);
 
     // Manejador global de errores (JSON + log)
     app.use((err, req, res, next) => {
